@@ -250,7 +250,7 @@ def dataio_prep(hparams):
         # we sort training data to speed up training and get better results.
         train_data = train_data.filtered_sorted(
             sort_key="duration",
-            key_max_value={"duration": hparams["avoid_if_longer_than"]},
+            #key_max_value={"duration": hparams["avoid_if_longer_than"]},
         )
         # when sorting do not shuffle in dataloader ! otherwise is pointless
         hparams["train_dataloader_opts"]["shuffle"] = False
@@ -259,14 +259,14 @@ def dataio_prep(hparams):
         train_data = train_data.filtered_sorted(
             sort_key="duration",
             reverse=True,
-            key_max_value={"duration": hparams["avoid_if_longer_than"]},
+            #key_max_value={"duration": hparams["avoid_if_longer_than"]},
         )
         # when sorting do not shuffle in dataloader ! otherwise is pointless
         hparams["train_dataloader_opts"]["shuffle"] = False
 
     elif hparams["sorting"] == "random":
         train_data = train_data.filtered_sorted(
-            key_max_value={"duration": hparams["avoid_if_longer_than"]},
+            #key_max_value={"duration": hparams["avoid_if_longer_than"]},
         )
 
     else:
@@ -300,11 +300,35 @@ def dataio_prep(hparams):
         This is done on the CPU in the `collate_fn`."""
         # sig, _ = torchaudio.load(wav)
         # sig = sig.transpose(0, 1).squeeze(1)        
-        sig, _ = librosa.load(wav, sr=hparams["sample_rate"])
+        sig, _ = librosa.load(wav,  sr=hparams["sample_rate"], offset=0.0, duration=hparams["avoid_if_longer_than"])
+        #sig, _ = librosa.load(wav, sr=hparams["sample_rate"])
         sig = torch.tensor(sig)
         return sig
 
-    sb.dataio.dataset.add_dynamic_item(datasets, audio_pipeline)
+    @sb.utils.data_pipeline.takes("wav","duration","offset")
+    @sb.utils.data_pipeline.provides("sig")
+    def audio_offset_pipeline(wav,duration,offset):      
+
+        #logger.info("wav: "+str(wav))
+        #logger.info("offset: "+str(offset))
+        #logger.info("duration : "+str(duration))
+
+        if float(duration)<float(offset)+10:
+            logger.info("Too long: "+str(wav))
+            exit(1)
+        sig, sr = librosa.load(wav, sr=None, offset=int(offset), duration=10)
+
+        #sig1, sr1 = librosa.load(wav, sr=None)
+        #duri = librosa.get_duration(y=sig1, sr=sr1)
+
+        #logger.info("duration1 : "+str(duri))
+
+        sig = torch.tensor(sig)
+        return sig
+
+    #sb.dataio.dataset.add_dynamic_item(datasets, audio_pipeline)
+
+    sb.dataio.dataset.add_dynamic_item(datasets, audio_offset_pipeline)
 
     # 3. Define label pipeline:
     @sb.utils.data_pipeline.takes("accent")
@@ -421,6 +445,15 @@ if __name__ == "__main__":
         run_opts=run_opts,
         checkpointer=hparams["checkpointer"],
     )
+    print(aid_brain.modules)
+    #PUM freeze all parameters
+    if int(hparams["freeze_parameters"])==1:
+        for param in aid_brain.modules.parameters():
+            param.requires_grad = False
+        for param in aid_brain.modules["classifier"].parameters():
+            param.requires_grad = True
+        for param in aid_brain.modules.parameters():
+            print(str(param))    
 
     # adding objects to trainer:
     train_dataloader_opts = hparams["train_dataloader_opts"]
@@ -452,3 +485,24 @@ if __name__ == "__main__":
         min_key="error_rate",
         test_loader_kwargs=hparams["test_dataloader_opts"],
     )
+
+    #accents_list=["african","australia","canada","england","indian","ireland","newzealand","philippines","scotland","singapore","us","wales"]
+    #accents_list=["other","indian","ireland","newzealand","scotland","wales"]
+    accents_lists_int=range(int(hparams["n_accents"]))
+    accents_list=[]
+
+    for a in accents_lists_int:
+        accents_list.append(str(a))
+
+    for acc in accents_list:
+
+        test_data_acc = test_data.filtered_sorted(key_test={"accent": lambda x: x == acc})
+
+        print("Test for "+acc)
+        test_stats = aid_brain.evaluate(
+            test_set=test_data_acc,
+            min_key="error_rate",
+            test_loader_kwargs=hparams["test_dataloader_opts"],
+        )
+
+
