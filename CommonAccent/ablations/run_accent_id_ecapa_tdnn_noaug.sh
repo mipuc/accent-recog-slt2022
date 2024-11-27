@@ -15,18 +15,19 @@
 set -euo pipefail
 
 # static vars
-cmd='/remote/idiap.svm/temp.speech01/jzuluaga/kaldi-jul-2020/egs/wsj/s5/utils/parallel/queue.pl -l gpu -P minerva -l h='vgn[ij]*' -V'
+# cmd='/remote/idiap.svm/temp.speech01/jzuluaga/kaldi-jul-2020/egs/wsj/s5/utils/parallel/queue.pl -l gpu -P minerva -l h='vgn[ij]*' -V'
+cmd='none'
 
 # training vars
 ecapa_tdnn_hub="speechbrain/spkrec-ecapa-voxceleb/embedding_model.ckpt"
 seed="1986"
 apply_augmentation="False"
 max_batch_len=400
-n_accents=14
+n_accents=7
 
 # data folder:
-csv_prepared_folder="data/en"
-output_dir="results/ECAPA-TDNN/EN/spkrec-ecapa-voxceleb"
+csv_prepared_folder="/home/projects/vokquant/accent-recog-slt2022/data/de"
+output_dir="/home/projects/vokquant/accent-recog-slt2022/results/ECAPA-TDNN/DE/spkrec-ecapa-voxceleb"
 
 # If augmentation is defined:
 if [ "$apply_augmentation" == "True" ]; then

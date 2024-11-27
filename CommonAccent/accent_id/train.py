@@ -9,6 +9,7 @@ import torchaudio
 import librosa
 from common_accent_prepare import prepare_common_accent
 from hyperpyyaml import load_hyperpyyaml
+import ipdb
 
 """Recipe for training an Accent Classification system with CommonVoice Accent.
 
@@ -51,8 +52,14 @@ class AID(sb.Brain):
 
         # Feature extraction and normalization
         feats = self.modules.compute_features(wavs)
-        feats = self.modules.mean_var_norm_input(feats, lens)
-
+        # check if mean_var_norm_input is available
+        # speechbrain uses mean_var_norm so i want to use this as well, but want to
+        # keep the option to use mean_var_norm_input for older models
+        
+        if hasattr(self.modules, "mean_var_norm_input"):
+            feats = self.modules.mean_var_norm_input(feats, lens)
+        elif hasattr(self.modules, "mean_var_norm"):
+            feats = self.modules.mean_var_norm(feats, lens)
         return feats, lens
 
     def compute_forward(self, batch, stage):
@@ -145,7 +152,8 @@ class AID(sb.Brain):
             The currently-starting epoch. This is passed
             `None` during the test stage.
         """
-
+        # print batch size
+        print(f"Batch size: {self.hparams.train_dataloader_opts['batch_size']}")
         # Set up statistics trackers for this stage
         self.loss_metric = sb.utils.metric_stats.MetricStats(
             metric=sb.nnet.losses.nll_loss
@@ -178,6 +186,7 @@ class AID(sb.Brain):
             stats = {
                 "loss": stage_loss,
                 "error_rate": self.error_metrics.summarize("average"),
+                "acc": 1 - self.error_metrics.summarize("average"),
             }
 
         # At the end of validation...
@@ -250,7 +259,7 @@ def dataio_prep(hparams):
         # we sort training data to speed up training and get better results.
         train_data = train_data.filtered_sorted(
             sort_key="duration",
-            #key_max_value={"duration": hparams["avoid_if_longer_than"]},
+            key_max_value={"duration": hparams["avoid_if_longer_than"]},
         )
         # when sorting do not shuffle in dataloader ! otherwise is pointless
         hparams["train_dataloader_opts"]["shuffle"] = False
@@ -259,14 +268,14 @@ def dataio_prep(hparams):
         train_data = train_data.filtered_sorted(
             sort_key="duration",
             reverse=True,
-            #key_max_value={"duration": hparams["avoid_if_longer_than"]},
+            key_max_value={"duration": hparams["avoid_if_longer_than"]},
         )
         # when sorting do not shuffle in dataloader ! otherwise is pointless
         hparams["train_dataloader_opts"]["shuffle"] = False
 
     elif hparams["sorting"] == "random":
         train_data = train_data.filtered_sorted(
-            #key_max_value={"duration": hparams["avoid_if_longer_than"]},
+            key_max_value={"duration": hparams["avoid_if_longer_than"]},
         )
 
     else:
@@ -293,41 +302,25 @@ def dataio_prep(hparams):
     accent_encoder = sb.dataio.encoder.CategoricalEncoder()
 
     # 2. Define audio pipeline:
-    @sb.utils.data_pipeline.takes("wav")
-    @sb.utils.data_pipeline.provides("sig")
+    # @sb.utils.data_pipeline.takes("wav")
+    # @sb.utils.data_pipeline.provides("sig")
     def audio_pipeline(wav):
         """Load the signal, and pass it and its length to the corruption class.
         This is done on the CPU in the `collate_fn`."""
         # sig, _ = torchaudio.load(wav)
         # sig = sig.transpose(0, 1).squeeze(1)        
-        sig, _ = librosa.load(wav,  sr=hparams["sample_rate"], offset=0.0, duration=hparams["avoid_if_longer_than"])
-        #sig, _ = librosa.load(wav, sr=hparams["sample_rate"])
+        sig, _ = librosa.load(wav, sr=hparams["sample_rate"])
         sig = torch.tensor(sig)
         return sig
-
+##
     @sb.utils.data_pipeline.takes("wav","duration","offset")
     @sb.utils.data_pipeline.provides("sig")
     def audio_offset_pipeline(wav,duration,offset):      
-
-        #logger.info("wav: "+str(wav))
-        #logger.info("offset: "+str(offset))
-        #logger.info("duration : "+str(duration))
-
-        if float(duration)<float(offset)+10:
-            logger.info("Too long: "+str(wav))
-            exit(1)
-        sig, sr = librosa.load(wav, sr=None, offset=int(offset), duration=10)
-
-        #sig1, sr1 = librosa.load(wav, sr=None)
-        #duri = librosa.get_duration(y=sig1, sr=sr1)
-
-        #logger.info("duration1 : "+str(duri))
-
+        sig, sr = librosa.load(wav,  sr=hparams["sample_rate"], offset=int(offset), duration=10)
         sig = torch.tensor(sig)
         return sig
-
-    #sb.dataio.dataset.add_dynamic_item(datasets, audio_pipeline)
-
+##
+    # sb.dataio.dataset.add_dynamic_item(datasets, audio_pipeline)
     sb.dataio.dataset.add_dynamic_item(datasets, audio_offset_pipeline)
 
     # 3. Define label pipeline:
@@ -371,6 +364,7 @@ def dataio_prep(hparams):
             length_func=lambda x: x["duration"],
             shuffle=dynamic_hparams["shuffle_ex"],
             batch_ordering=dynamic_hparams["batch_ordering"],
+            drop_last=True,
         )
 
         valid_batch_sampler = DynamicBatchSampler(
@@ -436,6 +430,10 @@ if __name__ == "__main__":
     if hparams["load_pretrained"]:
         sb.utils.distributed.run_on_main(hparams["pretrainer"].collect_files)
         hparams["pretrainer"].load_collected(device=run_opts["device"])
+        print("Pretrained model loaded")
+        print(sb.utils.distributed.run_on_main(hparams["pretrainer"].collect_files))
+    else:
+        print("No pretrained model loaded")
 
     # Initialize the Brain object to prepare for mask training.
     aid_brain = AID(
@@ -445,16 +443,26 @@ if __name__ == "__main__":
         run_opts=run_opts,
         checkpointer=hparams["checkpointer"],
     )
-    print(aid_brain.modules)
-    #PUM freeze all parameters
-    if int(hparams["freeze_parameters"])==1:
-        for param in aid_brain.modules.parameters():
+    # print(aid_brain.modules)
+    # if hparams has "freeze_embedding"
+    try:
+        hparams["freeze_embedding"]
+    except KeyError:
+        hparams["freeze_embedding"] = False
+    
+    try:
+        hparams["freeze_classifier"]
+    except KeyError:
+        hparams["freeze_classifier"] = False
+    
+    if hparams["freeze_embedding"]:
+        for param in aid_brain.modules.embedding_model.parameters():
             param.requires_grad = False
-        for param in aid_brain.modules["classifier"].parameters():
-            param.requires_grad = True
-        for param in aid_brain.modules.parameters():
-            print(str(param))    
-
+    if hparams["freeze_classifier"]:
+        for param in aid_brain.modules.classifier.parameters():
+            print("freezing classifier")
+            param.requires_grad = False
+            
     # adding objects to trainer:
     train_dataloader_opts = hparams["train_dataloader_opts"]
     valid_dataloader_opts = hparams["valid_dataloader_opts"]
@@ -485,24 +493,28 @@ if __name__ == "__main__":
         min_key="error_rate",
         test_loader_kwargs=hparams["test_dataloader_opts"],
     )
-
-    #accents_list=["african","australia","canada","england","indian","ireland","newzealand","philippines","scotland","singapore","us","wales"]
-    #accents_list=["other","indian","ireland","newzealand","scotland","wales"]
     accents_lists_int=range(int(hparams["n_accents"]))
     accents_list=[]
 
     for a in accents_lists_int:
         accents_list.append(str(a))
-
+    
+    print("Test for all accents")
+    print("accents_list: ", accents_list)
+    #get available accents in test_data using filtered_sorted
+    unique_accents = set([data['accent_encoded'].item() for data in test_data])
     for acc in accents_list:
+        if int(acc) in unique_accents:
+            test_data_acc = test_data.filtered_sorted(key_test={"accent_encoded": lambda x: x.item() == int(acc)})
+            # ipdb.set_trace()
+            print("test_data_acc: ", test_data_acc)
+            # get length of test_data_acc
+            print("len(test_data_acc): ", len(test_data_acc))
 
-        test_data_acc = test_data.filtered_sorted(key_test={"accent": lambda x: x == acc})
-
-        print("Test for "+acc)
-        test_stats = aid_brain.evaluate(
-            test_set=test_data_acc,
-            min_key="error_rate",
-            test_loader_kwargs=hparams["test_dataloader_opts"],
-        )
-
-
+            print("Test for: "+acc)
+            
+            test_stats = aid_brain.evaluate(
+                test_set=test_data_acc,
+                min_key="error_rate",
+                test_loader_kwargs=hparams["test_dataloader_opts"],
+            )

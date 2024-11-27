@@ -6,14 +6,14 @@
 # #################################
 
 # Seed needs to be set at top of yaml, before objects with parameters are made
-seed: 1986
+seed: 2987
 __set_seed: !apply:torch.manual_seed [!ref <seed>]
 
 # Set up folders for reading from and writing to
 # Dataset will be downloaded to the `data_folder`
 # data_folder: !PLACEHOLDER # e.g. /localscratch/common_voice_kpd/
-data_folder: /remote/idiap.svm/resource.dataset04/CommonVoice
-csv_prepared_folder: data/
+data_folder: /home/projects/vokquant/data/common_voice_de/downloaded
+csv_prepared_folder: /home/projects/vokquant/accent-recog-slt2022/data/de
 output_folder: !ref results/W2V2/xlsr-53-<avg_pool_class>/<seed>
 save_folder: !ref <output_folder>/save
 rir_folder: !ref data/rir_folder
@@ -36,9 +36,12 @@ error_stats: !name:speechbrain.utils.metric_stats.MetricStats
     metric: !name:speechbrain.nnet.losses.classification_error
         reduction: batch
 
+acc_computer: !name:speechbrain.utils.Accuracy.AccuracyStats
+
 # Training Parameters
 sample_rate: 16000
 number_of_epochs: 10
+batch_size: 8
 
 # set to TRUE to freeze all wav2vec2
 freeze_wav2vec2: False
@@ -47,14 +50,14 @@ freeze_wav2vec2: False
 freeze_wav2vec2_conv: True
 
 # Number of accents
-n_accents: 21
+n_accents: 7
 
 # batch type of sorting
 sorting: random # sort the samples
 
 # This setup works well for RTX 3090 24GB GPU, adapts it to your needs.
 # Or turn it off (but training speed will decrease)
-dynamic_batching: True
+dynamic_batching: False
 max_batch_len: 100 # XLSR is way bigger than w2v2-base, this works well
 num_bucket: 200
 num_workers: 4
@@ -115,6 +118,12 @@ output_mlp: !new:speechbrain.nnet.linear.Linear
     input_size: !ref <encoder_dim>
     n_neurons: !ref <n_accents>
     bias: False
+
+preout_mlp: !new:speechbrain.lobes.models.VanillaNN.VanillaNN
+   input_shape: [null, null, !ref <encoder_dim>]
+   activation: !ref <activation>
+   dnn_blocks: !ref <dnn_layers>
+   dnn_neurons: !ref <encoder_dim>
 
 # The first object passed to the Brain class is this "Epoch Counter"
 # which is saved by the Checkpointer so that training can be resumed

@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
     For instance, you can do in the terminal:
     - cat /out/folder/tsv/files/* | cut -d$'\t' -f5 | sort | uniq -c | sort -n
+    cat /data/vokquant/data/common_voice_de/de/* | cut -d$'\t' -f5 | sort | uniq -c | sort -n
 
     That command produces the count number of labeled samples with that accent. 
     Select accents with at least 100 samples.
@@ -71,14 +72,26 @@ _ACCENTS_FR = [
     "Français du Canada", # 8073 
     "Français de France", # 342921
 ]
+# _ACCENTS_DE = [
+#     1e4, # max 10000 samples per accent
+#     "Italienisch Deutsch", # 947 
+#     "Schweizerdeutsch", # 9891 
+#     "Österreichisches Deutsch", # 16066 
+#     "Nordrhein-Westfalen,Bundesdeutsch, Hochdeutsch,Deutschland Deutsch", # 50843 
+#     "Deutschland Deutsch", # 252709
+# ]
+
 _ACCENTS_DE = [
-    1e4, # max 10000 samples per accent
-    "Italienisch Deutsch", # 947 
-    "Schweizerdeutsch", # 9891 
-    "Österreichisches Deutsch", # 16066 
-    "Nordrhein-Westfalen,Bundesdeutsch, Hochdeutsch,Deutschland Deutsch", # 50843 
-    "Deutschland Deutsch", # 252709
+    1e3, # max 1000 samples per accent
+    "Ungarisch Deutsch", # 113 
+    "Griechisch Deutsch", # 118
+    "Kanadisches Deutsch", # 122
+    "Britisches Deutsch", # 134
+    "Ruhrpott Deutsch", # 167
+    "Russisch Deutsch", # 232
+    "Amerikanisches Deutsch", # 236
 ]
+
 _ACCENTS_IT = [
     1e4, # max 10000 samples per accent
     "Emiliano", # 151
@@ -106,7 +119,7 @@ def prepare_common_accent(
         data_folder, 
         save_folder, 
         accented_letters=False,
-        language="en",        
+        language="de",        
         skip_prep=False,
     ):
     """
@@ -133,8 +146,11 @@ def prepare_common_accent(
     Example
     -------
     >>> from recipes.CommonAccent.common_accent_prepare import prepare_common_accent
+    from common_accent_prepare import prepare_common_accent
     >>> data_folder = '/datasets/CommonAccent'
+    data_folder = '/home/projects/vokquant/data/common_voice_de/'
     >>> save_folder = 'exp/CommonAccent_exp'
+    save_folder = '/home/projects/vokquant/data/common_voice_de/experiment'
     >>> prepare_common_accent(\
             data_folder,\
             save_folder,\

@@ -6,15 +6,15 @@
 # #################################
 
 # Seed needs to be set at top of yaml, before objects with parameters are made
-seed: 1986
+seed: 1987
 __set_seed: !apply:torch.manual_seed [!ref <seed>]
 
 # Set up folders for reading from and writing:
-data_folder: /remote/idiap.svm/resource.dataset04/CommonVoice
-csv_prepared_folder: data/
-output_folder: results/analysis
-pretrained_path: /remote/idiap.svm/temp.speech01/jzuluaga/experiments/slt/accent-recog-slt2022/CommonAccent/accent_id/results/ECAPA-TDNN-nopretrain/1986/save/
-load_folder: !ref <pretrained_path>/CKPT+2023-01-06+10-01-26+00
+data_folder: /home/projects/vokquant/data/common_voice_de/downloaded
+csv_prepared_folder: /home/projects/vokquant/accent-recog-slt2022/data/de
+output_folder: !ref results/ECAPA-TDNN/<seed>
+pretrained_path: /home/projects/vokquant/accent-recog-slt2022/results/ECAPA-TDNN/DE/spkrec-ecapa-voxceleb/1987/save
+load_folder: !ref <pretrained_path>/CKPT+2024-04-18+17-38-34+00
 device: 'cuda:0'
 skip_prep: True
 # max audio lenth allowed, higher than this is dropped
@@ -26,11 +26,11 @@ n_mels: 80
 # Training Parameters
 sample_rate: 16000
 batch_size: 64
-n_languages: 16
+n_languages: 7
 emb_dim: 192 # dimensionality of the embeddings
 
 test_dataloader_options:
-    batch_size: 32
+    batch_size: 8
     shuffle: True
 
 # variable to control whether to apply augmentation or not:
@@ -42,6 +42,10 @@ compute_features: !new:speechbrain.lobes.features.Fbank
 
 # Mean and std normalization of the input features
 mean_var_norm: !new:speechbrain.processing.features.InputNormalization
+    norm_type: sentence
+    std_norm: False
+
+mean_var_norm_input: !new:speechbrain.processing.features.InputNormalization
     norm_type: sentence
     std_norm: False
 
@@ -84,6 +88,7 @@ error_stats2: !name:speechbrain.utils.metric_stats.BinaryMetricStats
 modules:
     compute_features: !ref <compute_features>
     mean_var_norm: !ref <mean_var_norm>    
+    mean_var_norm_input: !ref <mean_var_norm_input>    
     embedding_model: !ref <embedding_model>
     classifier: !ref <classifier>
 
